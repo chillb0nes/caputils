@@ -41,14 +41,14 @@ def capinfos(path: str | Path, *opts: str) -> dict[str, str]:
     opts = [*opts, '-T', '-M']
 
     out = subprocess.check_output(['capinfos', *opts, path], universal_newlines=True)
-    lines = out.splitlines()
-    if not out or len(lines) != 2 or '\t' not in out:
+    if not out or len(out.splitlines()) != 2 or '\t' not in out:
         raise RuntimeError(f'Unexpected output format of capinfos command:\n{out}')
 
+    lines = out.splitlines()
     keys = lines[0].split('\t')
     values = lines[1].split('\t')
 
-    return {k: v for k, v in zip(keys, values)}
+    return {k: v for k, v in zip(keys, values)}  # todo accept list, return dataframe
 
 
 def count(path: str | Path) -> int:
