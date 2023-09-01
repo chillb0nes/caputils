@@ -32,21 +32,42 @@ def pcap_reader(path: str | Path) -> dpkt.pcap.Reader | dpkt.pcapng.Reader:
         fd.close()
 
 
-def capinfos(path: str | Path, *opts: str) -> dict[str, str]:
-    if isinstance(path, str):
-        path = Path(path)
+def capinfos(
+    path: str | Path | list[str] | list[Path], *opts: str
+) -> dict[str, str] | list[dict[str, str]]:
+    if isinstance(path, list):
+        if len(path) == 0:
+            raise RuntimeError("No paths provided")
 
-    opts = [*opts, "-T", "-M"]
+        paths = path
+    else:
+        paths = [path]
 
-    out = subprocess.check_output(["capinfos", *opts, path], universal_newlines=True)
-    if not out or len(out.splitlines()) != 2 or "\t" not in out:
+    if not all(opt.startswith("-") for opt in opts):
+        raise RuntimeError("All opts must start with '-'")
+
+    if "-T" not in opts:
+        opts = [*opts, "-T"]
+    if "-M" not in opts:
+        opts = [*opts, "-M"]
+
+    out = subprocess.check_output(["capinfos", *opts, *paths], universal_newlines=True)
+    if not out or len(out.splitlines()) < 2 or "\t" not in out:
         raise RuntimeError(f"Unexpected output format of capinfos command:\n{out}")
+
+    infos = []
 
     lines = out.splitlines()
     keys = lines[0].split("\t")
-    values = lines[1].split("\t")
+    for line in lines[1:]:
+        values = line.split("\t")
+        info = {k: v for k, v in zip(keys, values)}
+        infos.append(info)
 
-    return {k: v for k, v in zip(keys, values)}  # todo accept list, return dataframe
+    if len(infos) > 1:
+        return infos
+    else:
+        return infos[0]
 
 
 def count(path: str | Path) -> int:
