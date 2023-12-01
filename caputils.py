@@ -6,7 +6,9 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Literal
+from subprocess import CalledProcessError
+from typing import Literal, Optional
+from warnings import warn
 
 import dpkt
 
@@ -32,6 +34,26 @@ def pcap_reader(path: str | Path) -> dpkt.pcap.Reader | dpkt.pcapng.Reader:
         fd.close()
 
 
+class PcapIterable:
+    def __init__(self, path: str | Path, count: Optional[bool] = None):
+        self.path = path
+        self.count = count
+
+    def __iter__(self):
+        with pcap_reader(self.path) as reader:
+            for ts, buf in reader:
+                yield ts, buf
+
+    def __len__(self):
+        if self.count is False:
+            return None
+
+        if self.count is None:
+            self.count = count(self.path)
+
+        return self.count
+
+
 def capinfos(
     path: str | Path | list[str] | list[Path], *opts: str
 ) -> dict[str, str] | list[dict[str, str]]:
@@ -51,7 +73,16 @@ def capinfos(
     if "-M" not in opts:
         opts = [*opts, "-M"]
 
-    out = subprocess.check_output(["capinfos", *opts, *paths], universal_newlines=True)
+    try:
+        out = subprocess.run(
+            ["capinfos", *opts, *paths],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+            universal_newlines=True,
+        ).stdout
+    except CalledProcessError as e:
+        raise RuntimeError(e.stderr) from e
     if not out or len(out.splitlines()) < 2 or "\t" not in out:
         raise RuntimeError(f"Unexpected output format of capinfos command:\n{out}")
 
@@ -72,6 +103,7 @@ def capinfos(
 
 def count(path: str | Path) -> int:
     if not shutil.which("capinfos"):
+        warn("capinfos executable not found on PATH, falling back to manual counting")
         with pcap_reader(path) as reader:
             return sum(1 for _ in reader)
 
